@@ -1,0 +1,11 @@
+MasterHostname: master
+MasterFQDN: master.srv
+MasterIP: 192.168.122.50
+Worker1Hostname: worker1
+Worker1FQDN: worker1.srv
+Worker1IP: 192.168.122.51
+Worker2Hostname: worker2
+Worker2FQDN: worker2.srv
+Worker2IP: 192.168.122.52
+
+path_git: /home/jlizano/kubernetes-puro/

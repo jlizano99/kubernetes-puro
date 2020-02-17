@@ -1,0 +1,182 @@
+---
+- hosts: kubernetes
+  remote_user: root
+  vars_files:
+  - variables
+  tasks:
+
+  - name: Copiar archivo de kubernetes repo
+    template:
+      src: kubernetes.repo.j2
+      dest: /etc/yum.repos.d/kubernetes.repo
+
+  - name: Agregar lineas al archivo /etc/hosts
+    lineinfile:
+      path: /etc/hosts
+      line: "{{ item }}"
+    with_items:
+       - '"{{MasterIP}}"  "{{MasterFQDN}}"  "{{MasterHostname}}"'
+       - '"{{Worker1IP}}"  "{{Worker1FQDN}}"  "{{Worker1Hostname}}"'
+       - '"{{Worker2IP}}"  "{{Worker2FQDN}}"  "{{Worker2Hostname}}"'
+
+  - name: Instalar librerias necesarias para trabajar
+    yum:
+      name:
+        - git
+        - screen
+        - nano
+        - vim
+        - net-tools
+        - wget
+        - unzip
+        - curl
+        - nfs-utils
+        - bind-utils
+        - kubelet
+        - kubeadm
+        - kubectl
+        - docker
+      state: present
+
+  - name: Abrir puertos para Kubernetes
+    firewalld:
+      port: "{{ item }}"
+      permanent: yes
+      zone: public
+      state: enabled
+    with_items:
+     - 6443/tcp
+     - 2379-2380/tcp
+     - 10250/tcp
+     - 10251/tcp
+     - 10252/tcp
+     - 10255/tcp
+
+  - name: Reiniciar firewalld
+    systemd:
+      state: restarted
+      daemon_reload: yes
+      name: firewalld
+
+  - name: Iniciar servicio kubelet
+    systemd:
+      state: started
+      name: kubelet
+
+  - name: Habilitar servicio kubelet
+    systemd:
+      name: kubelet
+      enabled: yes
+      masked: no
+
+  - name: Iniciar servicio Docker
+    systemd:
+      state: started
+      name: docker
+
+  - name: Habilitar servicio Docker
+    systemd:
+      name: docker
+      enabled: yes
+      masked: no
+
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+
+  - name: Reiniciar las máquinas para hacer todos los cambios sean efectivos
+    reboot:
+      reboot_timeout: 120
+
+  - name: Esperar 1 minuto mientras las máquinas inician
+    wait_for_connection:
+      delay: 30
+      timeout: 60
+
+- hosts: "{{MasterIP}}"
+  remote_user: root
+  vars_files:
+  - variables
+  tasks:
+
+  - name: Comentando las lineas de swap en fstab
+    replace:
+      path: /etc/fstab
+      regexp: '/dev/mapper/centos_master-swap'
+      replace: '#/dev/mapper/centos_master-swap'
+
+  - name: Copiar archivo con iptables y port forwarding a sysctl
+    template:
+      src: master_node_name.j2
+      dest: /etc/sysctl.d/master_node_name
+
+  - name: Ejecutar comandos sysctl
+    shell: sysctl --system
+
+  - name: Reiniciar las máquinas para hacer todos los cambios sean efectivos
+    reboot:
+      reboot_timeout: 120
+
+  - name: Esperar 1 minuto mientras las máquinas inician
+    wait_for_connection:
+      delay: 30
+      timeout: 60
+
+  - name: Deshabilitar swap
+    shell: swapoff -a
+
+  - name: Inicializar cluster de Kubernetes
+    shell: kubeadm init >> /root/output.txt
+
+  - name: Obtener el join token
+    shell: tail -2 /root/output.txt >> /root/join_token
+
+  - name: Sacar token y copiarlo a ruta local
+    fetch:
+      src: /root/join_token
+      dest: "{{path_git}}"
+      flat: yes
+
+  - name: Creacion de directorio para kubeconfig
+    file:
+      path: /root/.kube/
+      mode: 0777
+      owner: root
+      group: root
+      state: directory
+
+  - name: Copiar kubeconfig a ruta para lectura de kubectl
+    copy:
+      src: /etc/kubernetes/admin.conf
+      dest: /root/.kube/config
+      mode: 0777
+      remote_src: yes 
+
+  - name: Copiar archivo de calico a master node
+    template:
+      src: calico.yaml.j2
+      dest: /root/calico.yaml
+
+  - name: Inicializar red de calico
+    shell: kubectl apply -f calico.yaml
+    args:
+      chdir: /root/
+
+- hosts: workers
+  remote_user: root
+  vars_files:
+  - variables
+  tasks:
+
+  - name: Copiar archivo join_token 
+    template:
+      src: join_token
+      dest: /root/join_token.sh
+
+  - name: Deshabilitar swap
+    shell: swapoff -a
+    
+  - name: Unir worker nodes al cluster de Kubernetes
+    shell: sh join_token.sh
+    args:
+      chdir: /root/
