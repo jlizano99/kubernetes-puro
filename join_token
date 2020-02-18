@@ -1,2 +1,0 @@
-kubeadm join 192.168.122.50:6443 --token r0941h.potk2a2e23s1o53e \
-    --discovery-token-ca-cert-hash sha256:99aa15558d001f6385cb64813863a2a6ec0b33b164a12a32d2667fedfa7b0e36 

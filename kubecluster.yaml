@@ -84,6 +84,45 @@
     selinux:
       state: disabled
 
+  - name: Comentando las lineas de swap en fstab
+    replace:
+      path: /etc/fstab
+      regexp: '/dev/mapper/centos-swap'
+      replace: '#/dev/mapper/centos-swap'
+
+- hosts: "{{Worker1IP}}"
+  remote_user: root
+  vars_files:
+  - variables
+  tasks:
+
+  - name: Comentando las lineas de swap en fstab
+    replace:
+      path: /etc/fstab
+      regexp: '/dev/mapper/centos_{{Worker1Hostname}}-swap'
+      replace: '#/dev/mapper/centos_{{Worker1Hostname}}-swap'
+
+  - name: Reiniciar las máquinas para hacer todos los cambios sean efectivos
+    reboot:
+      reboot_timeout: 120
+
+  - name: Esperar 1 minuto mientras las máquinas inician
+    wait_for_connection:
+      delay: 30
+      timeout: 60
+
+- hosts: "{{Worker2IP}}"
+  remote_user: root
+  vars_files:
+  - variables
+  tasks:
+
+  - name: Comentando las lineas de swap en fstab
+    replace:
+      path: /etc/fstab
+      regexp: '/dev/mapper/centos_{{Worker2Hostname}}-swap'
+      replace: '#/dev/mapper/centos_{{Worker2Hostname}}-swap'
+
   - name: Reiniciar las máquinas para hacer todos los cambios sean efectivos
     reboot:
       reboot_timeout: 120
@@ -102,8 +141,8 @@
   - name: Comentando las lineas de swap en fstab
     replace:
       path: /etc/fstab
-      regexp: '/dev/mapper/centos_master-swap'
-      replace: '#/dev/mapper/centos_master-swap'
+      regexp: '/dev/mapper/centos_{{MasterHostname}}-swap'
+      replace: '#/dev/mapper/centos_{{MasterHostname}}-swap'
 
   - name: Copiar archivo con iptables y port forwarding a sysctl
     template:
@@ -172,9 +211,6 @@
     template:
       src: join_token
       dest: /root/join_token.sh
-
-  - name: Deshabilitar swap
-    shell: swapoff -a
     
   - name: Unir worker nodes al cluster de Kubernetes
     shell: sh join_token.sh
